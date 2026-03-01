@@ -1,0 +1,12 @@
+Language: C
+BreakBeforeBraces: Custom
+BraceWrapping:
+    AfterFunction: true
+    AfterControlStatement: false
+
+IndentWidth: 4
+UseTab: Never
+
+ColumnLimit: 80
+PointerAlignment: Right
+AllowShortIfStatementsOnASingleLine: Always
