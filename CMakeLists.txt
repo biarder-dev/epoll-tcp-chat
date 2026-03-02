@@ -9,6 +9,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 include_directories(include)
 set(SOURCES
     src/main.c
+    src/net_utils.c
 )
 add_executable(tcp_chat ${SOURCES})
 
