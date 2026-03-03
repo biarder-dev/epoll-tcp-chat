@@ -10,8 +10,10 @@ include_directories(include)
 set(SOURCES
     src/main.c
     src/net_utils.c
+    src/worker.c
 )
 add_executable(tcp_chat ${SOURCES})
 
 target_compile_definitions(tcp_chat PRIVATE _XOPEN_SOURCE=500)
+target_compile_definitions(tcp_chat PRIVATE _GNU_SOURCE)
 target_compile_options(tcp_chat PRIVATE -Wall -Wextra -O2)
