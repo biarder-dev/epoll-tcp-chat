@@ -11,6 +11,7 @@ set(SOURCES
     src/main.c
     src/net_utils.c
     src/worker.c
+    src/message.c
 )
 add_executable(tcp_chat ${SOURCES})
 

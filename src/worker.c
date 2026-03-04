@@ -1,17 +1,22 @@
 #include "worker.h"
+#include "message.h"
 #include "net_utils.h"
-#include <asm-generic/errno-base.h>
-#include <asm-generic/errno.h>
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #define MAX_EVENTS 1024
+#define NOT_IMPL -1 /* Temporary variable */
+
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t q_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static int set_nonblocking(int fd)
 {
@@ -28,7 +33,9 @@ static void setev(struct epoll_event *ev, int sockfd, int flags)
 
 void *start_worker(void *arg)
 {
-    int i, epfd, nfd;
+    usr_data ud;
+    char buf[1024];
+    int epfd, nfd, i, n;
     int lstn_sockfd, clnt_sockfd;
     socklen_t addrlen;
     struct sockaddr_in clntaddr;
@@ -74,9 +81,38 @@ void *start_worker(void *arg)
                     setev(&ev, clnt_sockfd, EPOLLIN | EPOLLET);
                     if (epoll_ctl(epfd, EPOLL_CTL_ADD, clnt_sockfd, &ev) < 0)
                         close(clnt_sockfd);
+                    clntsock_arr_add(clnt_sockfd);
+
+                    setud(&ud, "HOST", INADDR_ANY);
+                    snprintf(buf, sizeof(buf), "%s is joined!",
+                             inet_ntoa(clntaddr.sin_addr));
+
+                    pthread_mutex_lock(&q_mtx);
+                    msg_enque(buf, &ud);
+                    pthread_cond_signal(&cond);
+                    pthread_mutex_unlock(&q_mtx);
                 }
             } else {
-                close(events[i].data.fd);
+                for (;;) {
+                    n = read(events[i].data.fd, buf, sizeof(buf) - 1);
+                    if (n < 0) {
+                        if (errno == EINTR) continue;
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+
+                        /* Log error */
+                        goto cleanup;
+                    } else if (n == 0) {
+                        close(events[i].data.fd);
+                        clntsock_arr_del(events[i].data.fd);
+                    } else {
+                        buf[n] = '\0';
+                        setud(&ud, "Anonymous", NOT_IMPL);
+                        pthread_mutex_lock(&q_mtx);
+                        msg_enque(buf, &ud);
+                        pthread_cond_signal(&cond);
+                        pthread_mutex_unlock(&q_mtx);
+                    }
+                }
             }
         }
     }
@@ -86,4 +122,20 @@ cleanup:
     close(lstn_sockfd);
     close(epfd);
     return NULL;
+}
+
+void *start_broadcaster(void *arg)
+{
+    msg_data *md;
+    for (;;) {
+        pthread_mutex_lock(&q_mtx);
+        while ((md = msg_deque()) == NULL)
+            pthread_cond_wait(&cond, &q_mtx);
+        pthread_mutex_unlock(&q_mtx);
+
+        clntsock_broadcast(md);
+        freemd(md);
+    }
+
+    return arg;
 }
